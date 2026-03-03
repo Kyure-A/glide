@@ -59,6 +59,7 @@ impl Drop for Reactor {
 pub fn make_window(idx: usize) -> WindowInfo {
     WindowInfo {
         is_standard: true,
+        is_picture_in_picture_title: false,
         is_resizable: true,
         title: format!("Window{idx}").into(),
         frame: CGRect::new(

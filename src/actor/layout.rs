@@ -83,6 +83,7 @@ pub struct LayoutWindowInfo {
     pub bundle_id: Option<String>,
     pub layer: Option<i32>,
     pub is_standard: bool,
+    pub is_picture_in_picture: bool,
     pub is_resizable: bool,
 }
 
@@ -215,6 +216,9 @@ enum WindowClass {
 fn classify_window(info: &LayoutWindowInfo) -> WindowClass {
     use LayoutWindowInfo as Info;
     match info {
+        Info {
+            is_picture_in_picture: true, ..
+        } => WindowClass::Untracked,
         &Info { layer: Some(layer), .. } if layer != 0 => WindowClass::Untracked,
 
         // Finder reports a nonstandard window that doesn't actually "exist".
@@ -1423,6 +1427,7 @@ mod tests {
             bundle_id: None,
             layer: Some(0),
             is_standard: true,
+            is_picture_in_picture: false,
             is_resizable: true,
         }
     }
@@ -1517,6 +1522,17 @@ mod tests {
                 (WindowId::new(pid, 3), rect(800, 0, 400, 1200)),
             ],
             mgr.layout_sorted(space, screen2),
+        );
+    }
+
+    #[test]
+    fn it_ignores_picture_in_picture_windows() {
+        assert_eq!(
+            WindowClass::Untracked,
+            classify_window(&LayoutWindowInfo {
+                is_picture_in_picture: true,
+                ..win_info()
+            }),
         );
     }
 

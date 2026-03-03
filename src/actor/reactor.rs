@@ -37,6 +37,7 @@ use crate::actor::{group_bars, status};
 use crate::collections::{HashMap, HashSet};
 use crate::config::Config;
 use crate::log::{self, MetricsCommand};
+use crate::sys::app::is_picture_in_picture_label;
 use crate::sys::event::MouseState;
 use crate::sys::executor::Executor;
 use crate::sys::geometry::{CGRectDef, CGRectExt, SameAs, round_to_physical};
@@ -233,6 +234,7 @@ struct WindowState {
     /// words, we only accept reads when we know they come after the last write.
     frame_monotonic: CGRect,
     is_ax_standard: bool,
+    is_picture_in_picture_title: bool,
     is_resizable: bool,
     last_sent_txid: TransactionId,
     window_server_id: Option<WindowServerId>,
@@ -252,11 +254,20 @@ impl From<WindowInfo> for WindowState {
             title: info.title,
             frame_monotonic: info.frame,
             is_ax_standard: info.is_standard,
+            is_picture_in_picture_title: info.is_picture_in_picture_title,
             is_resizable: info.is_resizable,
             last_sent_txid: TransactionId::default(),
             window_server_id: info.sys_id,
         }
     }
+}
+
+fn is_picture_in_picture_app(info: &AppInfo) -> bool {
+    info.bundle_id
+        .as_deref()
+        .map(|bundle_id| bundle_id.to_ascii_lowercase().contains("pictureinpicture"))
+        .unwrap_or(false)
+        || info.localized_name.as_deref().map(is_picture_in_picture_label).unwrap_or(false)
 }
 
 impl Reactor {
@@ -426,6 +437,8 @@ impl Reactor {
                         bundle_id: app.info.bundle_id.clone(),
                         layer: ws_info.map(|i| i.layer),
                         is_standard: window.is_standard,
+                        is_picture_in_picture: window.is_picture_in_picture_title
+                            || is_picture_in_picture_app(&app.info),
                         is_resizable: window.is_resizable,
                     };
                     self.send_layout_event(LayoutEvent::WindowAdded(space, wid, info));
@@ -749,6 +762,8 @@ impl Reactor {
                     .and_then(|wsid| self.window_server_info.get(&wsid))
                     .map(|info| info.layer),
                 is_standard: window.is_ax_standard,
+                is_picture_in_picture: window.is_picture_in_picture_title
+                    || app.map(|app| is_picture_in_picture_app(&app.info)).unwrap_or(false),
                 is_resizable: window.is_resizable,
             };
             app_windows.entry(space).or_default().push((wid, layout_info));

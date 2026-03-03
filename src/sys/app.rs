@@ -76,6 +76,7 @@ impl From<&NSRunningApplication> for AppInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WindowInfo {
     pub is_standard: bool,
+    pub is_picture_in_picture_title: bool,
     // This only gets used for the record/replay feature.
     #[serde(serialize_with = "redact::expose_secret")]
     pub title: Secret<String>,
@@ -85,17 +86,60 @@ pub struct WindowInfo {
     pub is_resizable: bool,
 }
 
+pub(crate) fn is_picture_in_picture_label(value: &str) -> bool {
+    normalize_ascii_label(value) == "picture in picture"
+}
+
+fn normalize_ascii_label(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut pending_space = false;
+
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            if pending_space && !normalized.is_empty() {
+                normalized.push(' ');
+            }
+            pending_space = false;
+            normalized.push(ch);
+        } else if !normalized.is_empty() {
+            pending_space = true;
+        }
+    }
+
+    normalized
+}
+
 impl TryFrom<&AXUIElement> for WindowInfo {
     type Error = accessibility::Error;
     fn try_from(element: &AXUIElement) -> Result<Self, accessibility::Error> {
+        let title = element.title().map(|t| t.to_string()).unwrap_or_default();
         Ok(WindowInfo {
             is_standard: element.role()? == kAXWindowRole
                 && element.subrole()? == kAXStandardWindowSubrole,
-            title: element.title().map(|t| t.to_string().into()).unwrap_or_default(),
+            is_picture_in_picture_title: is_picture_in_picture_label(&title),
+            title: title.into(),
             frame: element.frame()?.to_icrate(),
             sys_id: WindowServerId::try_from(element).ok(),
             is_resizable: element.is_settable(&AXAttribute::size())?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_picture_in_picture_label;
+
+    #[test]
+    fn it_matches_picture_in_picture_labels() {
+        assert!(is_picture_in_picture_label("Picture in Picture"));
+        assert!(is_picture_in_picture_label("Picture-in-Picture"));
+        assert!(is_picture_in_picture_label("Picture - in - Picture"));
+    }
+
+    #[test]
+    fn it_rejects_other_labels() {
+        assert!(!is_picture_in_picture_label("Window"));
+        assert!(!is_picture_in_picture_label("Picture in Picture Guide"));
     }
 }
 
